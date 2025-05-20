@@ -1,43 +1,35 @@
-const express = require("express");
-const cors = require("cors");
-const { OpenAI } = require("openai");
+require("dotenv").config(); // <-- à mettre en tout premier
+
+const express = require('express');
+const cors = require('cors');
+const bodyParser = require('body-parser');
+const OpenAI = require('openai');
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY, // <-- on prend la clé depuis .env
+});
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-
-// 🔐 Ta clé OpenAI ici (ou mieux : utilise une variable d'environnement)
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
-
 app.use(cors());
-app.use(express.json());
+app.use(bodyParser.json());
 
-app.get("/", (req, res) => {
-  res.send("Serveur IA prêt !");
-});
-
-app.post("/chat", async (req, res) => {
-  const userMessage = req.body.message;
-  console.log("Message reçu :", userMessage);
-
+// Exemple de route :
+app.post('/chat', async (req, res) => {
   try {
+    const userMessage = req.body.message;
+
     const chatCompletion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo", // tu peux utiliser gpt-4 si tu as accès
-      messages: [
-        { role: "system", content: "Tu es un compagnon amical dans un jeu Roblox. Sois utile et immersif." },
-        { role: "user", content: userMessage }
-      ]
+      messages: [{ role: 'user', content: userMessage }],
+      model: 'gpt-3.5-turbo',
     });
 
-    const reply = chatCompletion.choices[0].message.content;
-    res.json({ reply });
-  } catch (error) {
-    console.error("Erreur OpenAI :", error);
-    res.status(500).json({ reply: "Désolé, une erreur est survenue." });
+    res.json({ response: chatCompletion.choices[0].message.content });
+  } catch (err) {
+    console.error('Erreur:', err);
+    res.status(500).json({ error: 'Erreur interne' });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Serveur lancé sur le port ${PORT}`);
+app.listen(3000, () => {
+  console.log('Serveur lancé sur le port 3000');
 });
