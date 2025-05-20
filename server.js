@@ -9,6 +9,8 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY, // <-- on prend la clé depuis .env
 });
 
+console.log(process.env.OPENAI_API_KEY);
+
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
