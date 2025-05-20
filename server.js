@@ -7,7 +7,7 @@ const PORT = process.env.PORT || 3000;
 
 // 🔐 Ta clé OpenAI ici (ou mieux : utilise une variable d'environnement)
 const openai = new OpenAI({
-  apiKey: "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"
+  apiKey: process.env.OPENAI_API_KEY
 });
 
 app.use(cors());
