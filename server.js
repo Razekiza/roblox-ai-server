@@ -1,37 +1,72 @@
-require("dotenv").config(); // <-- à mettre en tout premier
-
 const express = require('express');
-const cors = require('cors');
-const bodyParser = require('body-parser');
-const OpenAI = require('openai');
+const axios = require('axios');
+const dotenv = require('dotenv');
+const fs = require('fs');
+const path = require('path');
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY, // <-- on prend la clé depuis .env
-});
-
-console.log(process.env.OPENAI_API_KEY);
+dotenv.config();
 
 const app = express();
+const cors = require('cors');
 app.use(cors());
-app.use(bodyParser.json());
+const port = process.env.PORT || 3000;
+app.use(express.json());
+app.use(express.static('public'));
 
-// Exemple de route :
+const audioDir = path.join(__dirname, 'public/audio');
+if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
+
 app.post('/chat', async (req, res) => {
+  const userMessage = req.body.message;
+
   try {
-    const userMessage = req.body.message;
+    // 1. Appel OpenAI ChatGPT
+    const chatResponse = await axios.post(
+      'https://api.openai.com/v1/chat/completions',
+      {
+        model: 'gpt-3.5-turbo',
+        messages: [{ role: 'user', content: userMessage }],
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+      }
+    );
 
-    const chatCompletion = await openai.chat.completions.create({
-      messages: [{ role: 'user', content: userMessage }],
-      model: 'gpt-3.5-turbo',
+    const reply = chatResponse.data.choices[0].message.content;
+
+    // 2. Génération audio (Text to Speech)
+    const ttsResponse = await axios.post(
+      'https://api.openai.com/v1/audio/speech',
+      {
+        model: 'tts-1',
+        input: reply,
+        voice: 'nova',
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        responseType: 'arraybuffer',
+      }
+    );
+
+    const filename = `response_${Date.now()}.mp3`;
+    const filepath = path.join(audioDir, filename);
+    fs.writeFileSync(filepath, ttsResponse.data);
+
+    res.json({
+      reply: reply,
+      audioUrl: `/audio/${filename}`,
     });
-
-    res.json({ response: chatCompletion.choices[0].message.content });
   } catch (err) {
-    console.error('Erreur:', err);
-    res.status(500).json({ error: 'Erreur interne' });
+    console.error('Erreur:', err.response?.data || err.message);
+    res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-app.listen(3000, () => {
-  console.log('Serveur lancé sur le port 3000');
+app.listen(port, () => {
+  console.log(`✅ Serveur lancé sur http://localhost:${port}`);
 });
