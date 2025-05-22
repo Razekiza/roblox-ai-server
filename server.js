@@ -14,36 +14,38 @@ const ROBLOX_API_KEY = process.env.ROBLOX_API_KEY;
 const ROBLOX_UNIVERSE_ID = process.env.UNIVERSE_ID;
 const ROBLOX_GROUP_ID = process.env.GROUP_ID;
 
-const AUDIO_DIR = path.join(__dirname, 'audios');
-
-// Assure que le dossier audio existe
-if (!fs.existsSync(AUDIO_DIR)) {
-  fs.mkdirSync(AUDIO_DIR);
+if (!fs.existsSync('./audios')) {
+  fs.mkdirSync('./audios');
 }
 
 app.post('/chat', async (req, res) => {
-  try {
-    const userMessage = req.body.message;
-    if (!userMessage) return res.status(400).send({ error: 'Message manquant.' });
+  const userMessage = req.body.message;
+  if (!userMessage) return res.status(400).send({ error: 'Message manquant.' });
 
-    // 1. Chat avec OpenAI GPT-3.5 Turbo
+  console.log('Requête reçue :', userMessage);
+
+  try {
+    // 1. OpenAI chat completion
     const chatRes = await axios.post(
       'https://api.openai.com/v1/chat/completions',
       {
         model: 'gpt-3.5-turbo',
         messages: [{ role: 'user', content: userMessage }],
       },
-      { headers: { Authorization: `Bearer ${OPENAI_KEY}` } }
+      {
+        headers: { Authorization: `Bearer ${OPENAI_KEY}` },
+      }
     );
 
     const reply = chatRes.data.choices[0].message.content;
+    console.log('Réponse IA générée :', reply);
 
-    // 2. Génération audio via OpenAI TTS
+    // 2. TTS audio generation
     const ttsRes = await axios.post(
       'https://api.openai.com/v1/audio/speech',
       {
         model: 'tts-1',
-        voice: 'alloy', // tu peux changer la voix
+        voice: 'nova',
         input: reply,
         response_format: 'mp3',
       },
@@ -56,46 +58,41 @@ app.post('/chat', async (req, res) => {
       }
     );
 
-    // 3. Sauvegarde locale du fichier mp3
     const filename = `response_${Date.now()}.mp3`;
-    const filePath = path.join(AUDIO_DIR, filename);
-    fs.writeFileSync(filePath, Buffer.from(ttsRes.data));
+    const filePath = path.resolve(__dirname, 'audios', filename);
 
-    // 4. Upload sur Roblox Open Cloud
-    // Important : Roblox attend un flux de fichier via multipart/form-data,
-    // donc on utilise 'form-data' package pour ça.
-    const FormData = require('form-data');
-    const form = new FormData();
-    form.append('file', fs.createReadStream(filePath));
-    form.append('assetType', 'Audio');
-    form.append('name', filename);
-    form.append('groupId', ROBLOX_GROUP_ID);
-    form.append('universeId', ROBLOX_UNIVERSE_ID);
+    fs.writeFileSync(filePath, Buffer.from(ttsRes.data));
+    console.log('Audio TTS sauvegardé :', filePath);
+
+    // 3. Upload audio to Roblox
+    const fileStream = fs.createReadStream(filePath);
 
     const uploadRes = await axios.post(
-      `https://apis.roblox.com/assets/v1/assets/upload`,
-      form,
+      'https://apis.roblox.com/assets/v1/assets/upload',
+      fileStream,
       {
         headers: {
-          ...form.getHeaders(),
           'x-api-key': ROBLOX_API_KEY,
+          'Content-Type': 'audio/mpeg',
+          'Roblox-Asset-Name': filename,
+          'Roblox-Asset-Type': 'Audio',
+          'Roblox-Group-Id': ROBLOX_GROUP_ID,
+          'Roblox-Target-Id': ROBLOX_UNIVERSE_ID,
         },
-        maxBodyLength: Infinity,
         maxContentLength: Infinity,
+        maxBodyLength: Infinity,
       }
     );
 
-    // Supprime le fichier local après upload
-    fs.unlinkSync(filePath);
+    console.log('Upload réussi, assetId:', uploadRes.data.assetId);
 
-    const assetId = uploadRes.data.assetId;
-    return res.json({ reply, assetId });
-  } catch (error) {
-    console.error('Erreur serveur :', error.response?.data || error.message);
-    return res.status(500).json({ error: 'Erreur serveur', detail: error.message });
+    res.json({ reply, assetId: uploadRes.data.assetId });
+  } catch (err) {
+    console.error('Erreur serveur :', err.response?.data || err.message || err);
+    res.status(500).send({ error: 'Erreur serveur', detail: err.response?.data || err.message });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`✅ Serveur en ligne sur le port ${PORT}`);
+  console.log(`Serveur en ligne sur le port ${PORT}`);
 });
