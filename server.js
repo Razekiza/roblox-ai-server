@@ -3,14 +3,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const axios = require('axios');
 const fs = require('fs');
-const { v4: uuidv4 } = require('uuid');
-const fs = require('fs');
 const path = require('path');
-const audiosDir = path.join(__dirname, 'audios');
-
-if (!fs.existsSync(audiosDir)) {
-  fs.mkdirSync(audiosDir);
-}
 
 const app = express();
 app.use(bodyParser.json());
@@ -20,6 +13,12 @@ const OPENAI_KEY = process.env.OPENAI_API_KEY;
 const ROBLOX_API_KEY = process.env.ROBLOX_API_KEY;
 const ROBLOX_UNIVERSE_ID = process.env.UNIVERSE_ID;
 const ROBLOX_GROUP_ID = process.env.GROUP_ID;
+
+// Création du dossier audios s'il n'existe pas
+const audiosDir = path.join(__dirname, 'audios');
+if (!fs.existsSync(audiosDir)) {
+  fs.mkdirSync(audiosDir);
+}
 
 app.post('/chat', async (req, res) => {
   const userMessage = req.body.message;
@@ -38,29 +37,32 @@ app.post('/chat', async (req, res) => {
 
     const reply = chatRes.data.choices[0].message.content;
 
-    // 🔊 2. TTS
+    // 🔊 2. TTS (génération audio)
     const ttsRes = await axios.post(
       'https://api.openai.com/v1/audio/speech',
       {
         model: 'tts-1',
         voice: 'nova',
         input: reply,
-        response_format: 'mp3'
+        response_format: 'mp3',
       },
       {
         headers: {
           Authorization: `Bearer ${OPENAI_KEY}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        responseType: 'arraybuffer'
+        responseType: 'arraybuffer',
       }
     );
 
+    // Nom unique pour le fichier audio
     const filename = `response_${Date.now()}.mp3`;
-    const filePath = `./audios/${filename}`;
+    const filePath = path.join(audiosDir, filename);
+
+    // Sauvegarde du fichier audio
     fs.writeFileSync(filePath, Buffer.from(ttsRes.data));
 
-    // ☁️ 3. Upload sur Roblox
+    // ☁️ 3. Upload sur Roblox via API Open Cloud
     const uploadRes = await axios.post(
       `https://apis.roblox.com/assets/v1/assets/upload`,
       fs.createReadStream(filePath),
@@ -71,14 +73,16 @@ app.post('/chat', async (req, res) => {
           'Roblox-Asset-Name': filename,
           'Roblox-Asset-Type': 'Audio',
           'Roblox-Group-Id': ROBLOX_GROUP_ID,
-          'Roblox-Target-Id': ROBLOX_UNIVERSE_ID
+          'Roblox-Target-Id': ROBLOX_UNIVERSE_ID,
         },
         maxContentLength: Infinity,
-        maxBodyLength: Infinity
+        maxBodyLength: Infinity,
       }
     );
 
     const assetId = uploadRes.data.assetId;
+
+    // Retour à Roblox avec la réponse texte et l'assetId audio
     res.json({ reply, assetId });
   } catch (err) {
     console.error('Erreur serveur :', err.response?.data || err.message);
