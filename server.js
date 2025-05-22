@@ -4,6 +4,13 @@ const bodyParser = require('body-parser');
 const axios = require('axios');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
+const fs = require('fs');
+const path = require('path');
+const audiosDir = path.join(__dirname, 'audios');
+
+if (!fs.existsSync(audiosDir)) {
+  fs.mkdirSync(audiosDir);
+}
 
 const app = express();
 app.use(bodyParser.json());
