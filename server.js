@@ -1,66 +1,84 @@
 require('dotenv').config();
 const express = require('express');
+const bodyParser = require('body-parser');
 const axios = require('axios');
 const fs = require('fs');
-const path = require('path');
+const { v4: uuidv4 } = require('uuid');
 
 const app = express();
-const port = process.env.PORT || 3000;
-app.use(express.json());
+app.use(bodyParser.json());
 
-const audioDir = path.join(__dirname, 'public/audio');
-if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
+const PORT = process.env.PORT || 3000;
+const OPENAI_KEY = process.env.OPENAI_API_KEY;
+const ROBLOX_API_KEY = process.env.ROBLOX_API_KEY;
+const ROBLOX_UNIVERSE_ID = process.env.UNIVERSE_ID;
+const ROBLOX_GROUP_ID = process.env.GROUP_ID;
 
 app.post('/chat', async (req, res) => {
   const userMessage = req.body.message;
-  if (!userMessage) return res.status(400).json({ error: 'Message manquant' });
+  if (!userMessage) return res.status(400).send({ error: 'Message manquant.' });
 
   try {
-    // 1. Appel OpenAI ChatGPT
-    const chatResponse = await axios.post(
+    // 🧠 1. Génération réponse via OpenAI
+    const chatRes = await axios.post(
       'https://api.openai.com/v1/chat/completions',
       {
         model: 'gpt-3.5-turbo',
         messages: [{ role: 'user', content: userMessage }],
       },
-      { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` } }
+      { headers: { Authorization: `Bearer ${OPENAI_KEY}` } }
     );
 
-    const reply = chatResponse.data.choices[0].message.content;
+    const reply = chatRes.data.choices[0].message.content;
 
-    // 2. Génération TTS (exemple basique, à adapter selon la doc OpenAI)
-    const ttsResponse = await axios.post(
+    // 🔊 2. TTS
+    const ttsRes = await axios.post(
       'https://api.openai.com/v1/audio/speech',
       {
         model: 'tts-1',
+        voice: 'nova',
         input: reply,
-        voice: 'alloy',
+        response_format: 'mp3'
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          'Content-Type': 'application/json',
+          Authorization: `Bearer ${OPENAI_KEY}`,
+          'Content-Type': 'application/json'
         },
-        responseType: 'arraybuffer',
+        responseType: 'arraybuffer'
       }
     );
 
     const filename = `response_${Date.now()}.mp3`;
-    const filepath = path.join(audioDir, filename);
-    fs.writeFileSync(filepath, Buffer.from(ttsResponse.data), 'binary');
+    const filePath = `./audios/${filename}`;
+    fs.writeFileSync(filePath, Buffer.from(ttsRes.data));
 
-    res.json({
-      reply,
-      audioUrl: `/audio/${filename}`, // URL relative, à compléter selon ta config
-    });
-  } catch (error) {
-    console.error('Erreur serveur:', error.response?.data || error.message);
-    res.status(500).json({ error: 'Erreur serveur' });
+    // ☁️ 3. Upload sur Roblox
+    const uploadRes = await axios.post(
+      `https://apis.roblox.com/assets/v1/assets/upload`,
+      fs.createReadStream(filePath),
+      {
+        headers: {
+          'x-api-key': ROBLOX_API_KEY,
+          'Content-Type': 'audio/mpeg',
+          'Roblox-Asset-Name': filename,
+          'Roblox-Asset-Type': 'Audio',
+          'Roblox-Group-Id': ROBLOX_GROUP_ID,
+          'Roblox-Target-Id': ROBLOX_UNIVERSE_ID
+        },
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity
+      }
+    );
+
+    const assetId = uploadRes.data.assetId;
+    res.json({ reply, assetId });
+  } catch (err) {
+    console.error('Erreur serveur :', err.response?.data || err.message);
+    res.status(500).send({ error: 'Erreur serveur', detail: err.message });
   }
 });
 
-app.use('/audio', express.static(audioDir));
-
-app.listen(port, () => {
-  console.log(`Serveur lancé sur http://localhost:${port}`);
+app.listen(PORT, () => {
+  console.log(`✅ Serveur en ligne sur le port ${PORT}`);
 });
