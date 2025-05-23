@@ -14,5 +14,17 @@
     "form-data": "^4.0.2",
     "openai": "^4.100.0",
     "uuid": "^11.1.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Razekiza/roblox-ai-server.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Razekiza/roblox-ai-server/issues"
+  },
+  "homepage": "https://github.com/Razekiza/roblox-ai-server#readme",
+  "description": ""
 }
